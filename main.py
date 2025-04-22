@@ -3,6 +3,8 @@
 import math
 import argparse
 import random
+import csv
+from datetime import datetime
 
 def dot_product(x, y):
     return sum([x[i] * y[i] for i in range(len(x))])
@@ -58,6 +60,9 @@ def main():
     alpha = args.alpha
     N = args.N
     
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_filename = f"avgErrors_{file}_{alpha}_{N}_{timestamp}.csv"
+
     y =[]
     x=[]
     for line in open(file, "r"):
@@ -71,14 +76,23 @@ def main():
         x.append(xTemp)
     bias = random.uniform(0, 1)
     theta = [random.uniform(0, 1) for i in range(len(xTemp))]
-    for i in range(N):
-        theta, bias = gradient_descent_update(theta, alpha, y, x, N, bias)
-    for i in range(len(x)):
-        error = cross_entropy(y[i], logistic_regression(theta, x[i], bias))
-        print(logistic_regression(theta, x[i], bias))
-        print("Error: ", error)
-    print("Theta: ", theta)
-    print("Bias: ", bias)                                                                            
+    with open(csv_filename, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Iteration', 'Average Error'])
+        for i in range(N):
+            theta, bias = gradient_descent_update(theta, alpha, y, x, N, bias)
+            errorSum = 0
+            for j in range(len(y)):
+                errorSum = errorSum + cross_entropy(y[j], logistic_regression(theta, x[j], bias))
+            #print("Average Error: ", errorSum / len(y))
+            writer.writerow([i+1, abs(errorSum / len(y))])
+    #for i in range(len(x)):
+        #error = cross_entropy(y[i], logistic_regression(theta, x[i], bias))
+        #print(logistic_regression(theta, x[i], bias))
+        #print("Error: ", error)
+    for i in range(len(theta)):
+        print(theta[i], end = " ")
+    print(bias)                                                                            
 
 if __name__ == "__main__":
     main()
