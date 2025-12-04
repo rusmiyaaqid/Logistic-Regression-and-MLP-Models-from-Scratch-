@@ -19,6 +19,38 @@ def cross_entropy(y, yhat):
     yhat = max(min(yhat, 1 - epsilon), epsilon)
     return -(y * math.log(yhat) + (1 - y) * math.log(1 - yhat))
 
+#logistic reg:
+
+def logistic_regression(theta, x, bias):
+    return sigmoid(dot_product(theta, x) + bias)
+
+def gradient_descent_update(theta, alpha, y, X, bias):
+    n_samples = len(y)
+
+    # Update theta
+    for i in range(len(theta)):
+        grad = 0
+        for j in range(n_samples):
+            yhat = logistic_regression(theta, X[j], bias)
+            grad += (yhat - y[j]) * X[j][i]
+        theta[i] -= alpha * grad / n_samples
+
+    # Update bias
+    grad_b = sum([(logistic_regression(theta, X[j], bias) - y[j]) for j in range(n_samples)])
+    bias -= alpha * grad_b / n_samples
+
+    return theta, bias
+
+def calculate_accuracy_logreg(theta, X, y, bias):
+    correct = 0
+    for i in range(len(y)):
+        yhat = logistic_regression(theta, X[i], bias)
+        pred = 1 if yhat >= 0.5 else 0
+        if pred == y[i]:
+            correct += 1
+    return correct / len(y)
+#MLP
+
 def initialize_mlp(n_inputs, n_hidden):
 
     hidden_weights = []
@@ -93,65 +125,69 @@ def batch_backward_pass(X, y, hidden_weights, hidden_biases, output_weights, out
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MLP with one hidden layer (10 units), batch gradient descent")
-    parser.add_argument("file", type=str, help="Input file")
+    parser = argparse.ArgumentParser(description="Run Logistic Regression or MLP")
+    parser.add_argument("--model", choices=["logreg", "mlp"], required=True,
+                        help="Choose model: logreg or mlp")
+    parser.add_argument("file", type=str, help="Input data file")
     parser.add_argument("alpha", type=float, help="Learning rate")
     parser.add_argument("N", type=int, help="Number of iterations")
     args = parser.parse_args()
 
-    file = args.file
-    alpha = args.alpha
-    N = args.N
-
-    # Load data
-    y = []
+    # Load Data
     X = []
-    with open(file, "r") as f:
+    y = []
+    with open(args.file, "r") as f:
         for line in f:
             parts = line.strip().split(" ")
-            x_vals = [float(val) for val in parts[:-1]]
-            X.append(x_vals)
+            X.append([float(p) for p in parts[:-1]])
             y.append(float(parts[-1]))
 
     input_dim = len(X[0])
-    hidden_units = 10
-
-    hidden_w, hidden_b, output_w, output_b = initialize_mlp(input_dim, hidden_units)
-
-    # Prepare CSV file for writing accuracy per epoch
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"1_mlp_accuracy_{file}_{alpha}_{N}_{timestamp}.csv"
 
-    with open(csv_filename, "w", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["Epoch", "Accuracy"])
+    if args.model == "logreg":
+        csv_name = f"logreg_accuracy_{args.file}_{args.alpha}_{args.N}_{timestamp}.csv"
+        theta = [random.uniform(0,1) for _ in range(input_dim)]
+        bias = random.uniform(0,1)
 
-        for epoch in range(N):
-            total_loss = 0
-            correct = 0
+        with open(csv_name, "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Iteration", "Accuracy"])
 
-            for i in range(len(X)):
-                _, _, _, output_a = forward_pass(X[i], hidden_w, hidden_b, output_w, output_b)
-                total_loss += cross_entropy(y[i], output_a)
-                pred = 1 if output_a >= 0.5 else 0
-                if pred == y[i]:
-                    correct += 1
+            for i in range(args.N):
+                theta, bias = gradient_descent_update(theta, args.alpha, y, X, bias)
+                acc = calculate_accuracy_logreg(theta, X, y, bias)
+                writer.writerow([i + 1, acc])
 
-            hidden_w, hidden_b, output_w, output_b = batch_backward_pass(
-                X, y, hidden_w, hidden_b, output_w, output_b, alpha
-            )
+        print("Final theta:", theta)
+        print("Final bias:", bias)
 
-            acc = correct / len(X)
-            writer.writerow([epoch + 1, acc])
+    elif args.model == "mlp":
+        csv_name = f"mlp_accuracy_{args.file}_{args.alpha}_{args.N}_{timestamp}.csv"
+        hidden_w, hidden_b, output_w, output_b = initialize_mlp(input_dim, 10)
 
-            #if (epoch + 1) % 100 == 0 or epoch == N - 1:
-            #    print(f"Epoch {epoch+1}: Loss = {total_loss:.4f}, Accuracy = {acc:.4f}")
+        with open(csv_name, "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Epoch", "Accuracy"])
 
-    print("\nFinal weights:")
-    print("Hidden weights:", hidden_w)
-    print("Hidden biases:", hidden_b)
-    print("Output weights:", output_w)
-    print("Output bias:", output_b)
+            for epoch in range(args.N):
+                correct = 0
+                for i in range(len(X)):
+                    _, _, _, out = forward_pass(X[i], hidden_w, hidden_b, output_w, output_b)
+                    pred = 1 if out >= 0.5 else 0
+                    if pred == y[i]:
+                        correct += 1
+
+                hidden_w, hidden_b, output_w, output_b = batch_backward_pass(
+                    X, y, hidden_w, hidden_b, output_w, output_b, args.alpha
+                )
+
+                acc = correct / len(X)
+                writer.writerow([epoch + 1, acc])
+
+        print("Final Output Weights:", output_w)
+        print("Output Bias:", output_b)
+
 
 if __name__ == "__main__":
     main()
