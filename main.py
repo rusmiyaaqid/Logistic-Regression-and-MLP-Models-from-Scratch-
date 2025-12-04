@@ -1,5 +1,3 @@
-#arobbin7@u.rochester.edu
-
 import math
 import argparse
 import random
@@ -9,49 +7,94 @@ from datetime import datetime
 def dot_product(x, y):
     return sum([x[i] * y[i] for i in range(len(x))])
 
-#return the sigmoid of x
 def sigmoid(x):
     return 1 / (1 + (math.e) ** (-x))
-    
 
-#return yhat
-def logistic_regression(theta, x, bias):
-    
-    return sigmoid(dot_product(theta, x) + bias)
+def sigmoid_derivative(x):
+    s = sigmoid(x)
+    return s * (1 - s)
 
-#cross entropy loss function
 def cross_entropy(y, yhat):
     epsilon = 1e-15
     yhat = max(min(yhat, 1 - epsilon), epsilon)
-    return y * math.log(yhat) + (1-y) * math.log(1 - yhat)
+    return -(y * math.log(yhat) + (1 - y) * math.log(1 - yhat))
 
-def gradient_descent_update(theta, alpha, y, x, N, bias):
-    for i in range(0, len(theta)):
-        sum =0
-        for j in range(len(y)):
-            yhat = logistic_regression(theta, x[j], bias)
-            error = yhat - y[j]
-            sum += error * x[j][i]
-        theta[i] -= alpha * sum / len(y)
-    #update the bias
-    sum = 0
-    for j in range(len(y)):
-        yhat = logistic_regression(theta, x[j], bias)
-        error = yhat - y[j]
-        sum += error
-    bias -= alpha * sum / len(y)
-    return theta, bias
+def initialize_mlp(n_inputs, n_hidden):
 
-
-
+    hidden_weights = []
+    for i in range(n_hidden): 
+        weights = []
+        for _ in range(n_inputs):  
+            weights.append(random.uniform(-1, 1))
+        hidden_weights.append(weights)
     
+    hidden_biases = []
+    for i in range(n_hidden):
+        hidden_biases.append(random.uniform(-1, 1))
+    
+   
+    output_weights = []
+    for i in range(n_hidden):
+        output_weights.append(random.uniform(-1, 1))
+        
+    output_bias = random.uniform(-1, 1)
+    return hidden_weights, hidden_biases, output_weights, output_bias
+
+def forward_pass(x, hidden_weights, hidden_biases, output_weights, output_bias):
+    hidden_activations = []
+    hidden_zs = []
+    for i in range(len(hidden_weights)):
+        z = dot_product(hidden_weights[i], x) + hidden_biases[i]
+        a = sigmoid(z)
+        hidden_zs.append(z)
+        hidden_activations.append(a)
+    output_z = dot_product(output_weights, hidden_activations) + output_bias
+    output_a = sigmoid(output_z)
+    return hidden_activations, hidden_zs, output_z, output_a
+
+def batch_backward_pass(X, y, hidden_weights, hidden_biases, output_weights, output_bias, lr):
+    n_samples = len(X)
+
+    d_output_w = [0.0] * len(output_weights)
+    d_output_b = 0.0
+    d_hidden_w = [[0.0 for _ in range(len(X[0]))] for _ in range(len(hidden_weights))]
+    d_hidden_b = [0.0] * len(hidden_biases)
+
+    for i in range(n_samples):
+        x_i = X[i]
+        y_i = y[i]
+
+        h_acts, h_zs, o_z, o_a = forward_pass(x_i, hidden_weights, hidden_biases, output_weights, output_bias)
+        dL_dz2 = (o_a - y_i) * sigmoid_derivative(o_z)
+
+        # Gradients for output layer
+        for j in range(len(output_weights)):
+            d_output_w[j] += dL_dz2 * h_acts[j]
+        d_output_b += dL_dz2
+
+        # Gradients for hidden layer
+        for j in range(len(hidden_weights)):
+            dz1 = sigmoid_derivative(h_zs[j]) * dL_dz2 * output_weights[j]
+            for k in range(len(hidden_weights[j])):
+                d_hidden_w[j][k] += dz1 * x_i[k]
+            d_hidden_b[j] += dz1
+
+    # since we do batch gradient descent, average gradients before updating weights (we've already added all the gradients)
+    for j in range(len(output_weights)):
+        output_weights[j] -= lr * d_output_w[j] / n_samples
+    output_bias -= lr * d_output_b / n_samples
+
+    for j in range(len(hidden_weights)):
+        for k in range(len(hidden_weights[j])):
+            hidden_weights[j][k] -= lr * d_hidden_w[j][k] / n_samples
+        hidden_biases[j] -= lr * d_hidden_b[j] / n_samples
+
+    return hidden_weights, hidden_biases, output_weights, output_bias
 
 
 def main():
-    #Parse command line
-    
-    parser = argparse.ArgumentParser(description="Logistic Regression with Gradient Descent")
-    parser.add_argument("file", type=str, help="File name")
+    parser = argparse.ArgumentParser(description="MLP with one hidden layer (10 units), batch gradient descent")
+    parser.add_argument("file", type=str, help="Input file")
     parser.add_argument("alpha", type=float, help="Learning rate")
     parser.add_argument("N", type=int, help="Number of iterations")
     args = parser.parse_args()
@@ -59,40 +102,56 @@ def main():
     file = args.file
     alpha = args.alpha
     N = args.N
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"avgErrors_{file}_{alpha}_{N}_{timestamp}.csv"
 
-    y =[]
-    x=[]
-    for line in open(file, "r"):
-        #parse the line
-        line = line.strip().split(" ")
-        xTemp =[0] * 4
-        
-        for i in range(len(line)-1):
-            xTemp[i] = float(line[i])
-        y.append(float(line[-1]))
-        x.append(xTemp)
-    bias = random.uniform(0, 1)
-    theta = [random.uniform(0, 1) for i in range(len(xTemp))]
+    # Load data
+    y = []
+    X = []
+    with open(file, "r") as f:
+        for line in f:
+            parts = line.strip().split(" ")
+            x_vals = [float(val) for val in parts[:-1]]
+            X.append(x_vals)
+            y.append(float(parts[-1]))
+
+    input_dim = len(X[0])
+    hidden_units = 10
+
+    hidden_w, hidden_b, output_w, output_b = initialize_mlp(input_dim, hidden_units)
+
+    # Prepare CSV file for writing accuracy per epoch
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_filename = f"1_mlp_accuracy_{file}_{alpha}_{N}_{timestamp}.csv"
+
     with open(csv_filename, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Iteration', 'Average Error'])
-        for i in range(N):
-            theta, bias = gradient_descent_update(theta, alpha, y, x, N, bias)
-            errorSum = 0
-            for j in range(len(y)):
-                errorSum = errorSum + cross_entropy(y[j], logistic_regression(theta, x[j], bias))
-            #print("Average Error: ", errorSum / len(y))
-            writer.writerow([i+1, abs(errorSum / len(y))])
-    #for i in range(len(x)):
-        #error = cross_entropy(y[i], logistic_regression(theta, x[i], bias))
-        #print(logistic_regression(theta, x[i], bias))
-        #print("Error: ", error)
-    for i in range(len(theta)):
-        print(theta[i], end = " ")
-    print(bias)                                                                            
+        writer.writerow(["Epoch", "Accuracy"])
+
+        for epoch in range(N):
+            total_loss = 0
+            correct = 0
+
+            for i in range(len(X)):
+                _, _, _, output_a = forward_pass(X[i], hidden_w, hidden_b, output_w, output_b)
+                total_loss += cross_entropy(y[i], output_a)
+                pred = 1 if output_a >= 0.5 else 0
+                if pred == y[i]:
+                    correct += 1
+
+            hidden_w, hidden_b, output_w, output_b = batch_backward_pass(
+                X, y, hidden_w, hidden_b, output_w, output_b, alpha
+            )
+
+            acc = correct / len(X)
+            writer.writerow([epoch + 1, acc])
+
+            #if (epoch + 1) % 100 == 0 or epoch == N - 1:
+            #    print(f"Epoch {epoch+1}: Loss = {total_loss:.4f}, Accuracy = {acc:.4f}")
+
+    print("\nFinal weights:")
+    print("Hidden weights:", hidden_w)
+    print("Hidden biases:", hidden_b)
+    print("Output weights:", output_w)
+    print("Output bias:", output_b)
 
 if __name__ == "__main__":
     main()
